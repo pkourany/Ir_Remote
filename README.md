@@ -1,5 +1,6 @@
 Spark-Core-IRremote
 ===================
+By: qwertzguy
 
 A modified version of [Arduino-IRremote](https://github.com/shirriff/Arduino-IRremote) for the Spark Core v1.0 and compatible with the Spark Core web IDE.
 
