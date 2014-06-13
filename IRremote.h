@@ -41,6 +41,8 @@ private:
   void enableIROut(int khz);
   void mark(int usec);
   void space(int usec);
+  void analogWrite2(uint16_t pin, uint8_t value);
+  void My_delay_uSecs(unsigned int T);
 }
 ;
 
