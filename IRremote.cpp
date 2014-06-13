@@ -17,9 +17,110 @@
  * JVC and Panasonic protocol added by Kristian Lauszus (Thanks to zenwheel and other people at the original blog post)
  */
 
-#include "IRremote.h"
+// #include "IRremote.h"
 
 IRsend::IRsend(int irPin) : irPin(irPin) {};
+
+
+// From https://github.com/zoellner/IRLib/blob/master/IRLib.cpp and also 
+// based on https://gist.github.com/technobly/8313449
+uint16_t TIM_ARR = (uint16_t)(24000000 / 38000) - 1; // 38 KHz Init
+ 
+// User defined analogWrite() to gain control of PWM initialization
+void IRsend::analogWrite2(uint16_t pin, uint8_t value) {
+  TIM_OCInitTypeDef TIM_OCInitStructure;
+ 
+  if (pin >= TOTAL_PINS || PIN_MAP[pin].timer_peripheral == NULL) {
+    return;
+  }
+  // SPI safety check
+  if (SPI.isEnabled() == true && (pin == SCK || pin == MOSI || pin == MISO)) {
+    return;
+  }
+  // I2C safety check
+  if (Wire.isEnabled() == true && (pin == SCL || pin == SDA)) {
+    return;
+  }
+  // Serial1 safety check
+  if (Serial1.isEnabled() == true && (pin == RX || pin == TX)) {
+    return;
+  }
+  if (PIN_MAP[pin].pin_mode != OUTPUT && PIN_MAP[pin].pin_mode != AF_OUTPUT_PUSHPULL) {
+    return;
+  }
+  // Don't re-init PWM and cause a glitch if already setup, just update duty cycle and return.
+  if (PIN_MAP[pin].pin_mode == AF_OUTPUT_PUSHPULL) {
+    TIM_OCInitStructure.TIM_Pulse = (uint16_t)(value * (TIM_ARR + 1) / 255);
+    if (PIN_MAP[pin].timer_ch == TIM_Channel_1) {
+      PIN_MAP[pin].timer_peripheral-> CCR1 = TIM_OCInitStructure.TIM_Pulse;
+    } else if (PIN_MAP[pin].timer_ch == TIM_Channel_2) {
+      PIN_MAP[pin].timer_peripheral-> CCR2 = TIM_OCInitStructure.TIM_Pulse;
+    } else if (PIN_MAP[pin].timer_ch == TIM_Channel_3) {
+      PIN_MAP[pin].timer_peripheral-> CCR3 = TIM_OCInitStructure.TIM_Pulse;
+    } else if (PIN_MAP[pin].timer_ch == TIM_Channel_4) {
+      PIN_MAP[pin].timer_peripheral-> CCR4 = TIM_OCInitStructure.TIM_Pulse;
+    }
+    return;
+  }
+ 
+  TIM_TimeBaseInitTypeDef TIM_TimeBaseStructure;
+ 
+  //PWM Frequency : PWM_FREQ (Hz)
+  uint16_t TIM_Prescaler = (uint16_t)(SystemCoreClock / 24000000) - 1; //TIM Counter clock = 24MHz
+ 
+  // TIM Channel Duty Cycle(%) = (TIM_CCR / TIM_ARR + 1) * 100
+  uint16_t TIM_CCR = (uint16_t)(value * (TIM_ARR + 1) / 255);
+ 
+  // AFIO clock enable
+  RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO, ENABLE);
+ 
+  //pinMode(pin, AF_OUTPUT_PUSHPULL); // we need to do this manually else we get a glitch
+ 
+  // TIM clock enable
+  if (PIN_MAP[pin].timer_peripheral == TIM2)
+    RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
+  else if (PIN_MAP[pin].timer_peripheral == TIM3)
+    RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM3, ENABLE);
+  else if (PIN_MAP[pin].timer_peripheral == TIM4)
+    RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM4, ENABLE);
+ 
+  // Time base configuration
+  TIM_TimeBaseStructure.TIM_Period = TIM_ARR;
+  TIM_TimeBaseStructure.TIM_Prescaler = TIM_Prescaler;
+  TIM_TimeBaseStructure.TIM_ClockDivision = 0;
+  TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up;
+ 
+  TIM_TimeBaseInit(PIN_MAP[pin].timer_peripheral, & TIM_TimeBaseStructure);
+ 
+  // PWM1 Mode configuration
+  TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM1;
+  TIM_OCInitStructure.TIM_OutputState = TIM_OutputState_Enable;
+  TIM_OCInitStructure.TIM_OCPolarity = TIM_OCPolarity_High;
+  TIM_OCInitStructure.TIM_Pulse = TIM_CCR;
+ 
+  if (PIN_MAP[pin].timer_ch == TIM_Channel_1) {
+    // PWM1 Mode configuration: Channel1
+    TIM_OC1Init(PIN_MAP[pin].timer_peripheral, & TIM_OCInitStructure);
+    TIM_OC1PreloadConfig(PIN_MAP[pin].timer_peripheral, TIM_OCPreload_Enable);
+  } else if (PIN_MAP[pin].timer_ch == TIM_Channel_2) {
+    // PWM1 Mode configuration: Channel2
+    TIM_OC2Init(PIN_MAP[pin].timer_peripheral, & TIM_OCInitStructure);
+    TIM_OC2PreloadConfig(PIN_MAP[pin].timer_peripheral, TIM_OCPreload_Enable);
+  } else if (PIN_MAP[pin].timer_ch == TIM_Channel_3) {
+    // PWM1 Mode configuration: Channel3
+    TIM_OC3Init(PIN_MAP[pin].timer_peripheral, & TIM_OCInitStructure);
+    TIM_OC3PreloadConfig(PIN_MAP[pin].timer_peripheral, TIM_OCPreload_Enable);
+  } else if (PIN_MAP[pin].timer_ch == TIM_Channel_4) {
+    // PWM1 Mode configuration: Channel4
+    TIM_OC4Init(PIN_MAP[pin].timer_peripheral, & TIM_OCInitStructure);
+    TIM_OC4PreloadConfig(PIN_MAP[pin].timer_peripheral, TIM_OCPreload_Enable);
+  }
+ 
+  TIM_ARRPreloadConfig(PIN_MAP[pin].timer_peripheral, ENABLE);
+ 
+  // TIM enable counter
+  TIM_Cmd(PIN_MAP[pin].timer_peripheral, ENABLE);
+}
 
 void IRsend::sendNEC(unsigned long data, int nbits)
 {
@@ -251,40 +352,34 @@ void IRsend::sendJVC(unsigned long data, int nbits, int repeat)
     space(0);
 }
 
+
+void  IRsend::My_delay_uSecs(unsigned int T) {
+    if(T){if(T>16000) {delayMicroseconds(T % 1000); delay(T/1000); } else delayMicroseconds(T);};
+}
+
+
+
 void IRsend::mark(int time) {
   // Sends an IR mark (frequency burst output) for the specified number of microseconds.
-  noInterrupts();
-  
-  while (time > 0) {
-    digitalWrite(irPin, HIGH); // this takes about 3 microseconds to happen
-    delayMicroseconds(burstWait);
-    digitalWrite(irPin, LOW); // this also takes about 3 microseconds
-    delayMicroseconds(burstWait);
- 
-    time -= burstLength;
-  }
-  
-  interrupts();
+    analogWrite2 (irPin,128);
+    My_delay_uSecs(time);
+
 }
 
 void IRsend::space(int time) {
   // Sends an IR space (no output) for the specified number of microseconds.
-  digitalWrite(irPin, LOW); // Takes about 3 microsecondes
-  if (time > 3) {
-    delayMicroseconds(time - 3);
-  }
+    analogWrite2 (irPin,0);
+    My_delay_uSecs(time);
 }
 
 void IRsend::enableIROut(int khz) {
   // Enables IR output.  The khz value controls the modulation frequency in kilohertz.
   // MAX frequency is 166khz.
-  pinMode(irPin, OUTPUT);
-  digitalWrite(irPin, LOW);
+    pinMode (irPin, OUTPUT);
+    TIM_ARR = (uint16_t)(24000000 / (khz*1000)) - 1; 
+    analogWrite2 (irPin,128); // 50% Duty Cycle
+    pinMode(irPin, AF_OUTPUT_PUSHPULL);
+    space(0); // And turn off the PWM output until we need it
+    delay(100);
 
-  // This is the time to wait with the IR LED on and off to make the frequency, in microseconds.
-  // The - 3.0 at the end is because digitalWrite() takes about 3 microseconds. Info from:
-  // https://github.com/eflynch/sparkcoreiremitter/blob/master/ir_emitter/ir_emitter.ino
-  burstWait = round(1.0 / khz * 1000.0 / 2.0 - 3.0);
-  // This is the total time of a period, in microseconds.
-  burstLength = round(1.0 / khz * 1000.0);
 }
