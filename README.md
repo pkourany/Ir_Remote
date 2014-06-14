@@ -8,8 +8,9 @@ Modifications
 -------------
 
 * Trimmed out IRrecv (removed the decoding of IR signals. Thus you can only send IR codes with this lib. If you make the IRrecv part of the code copatible, please send a pull-request :) )
-* Removed the use of PWM. It now only uses digitalWrite() and delayMicroseconds() to make the IR pulses. Thus the maximum frequency of pulses is 166khz. (Most IR codes are 38khz so it's not a problem). Kudos to eflynch: [https://github.com/eflynch/sparkcoreiremitter/blob/master/ir_emitter/ir_emitter.ino](https://github.com/eflynch/sparkcoreiremitter/blob/master/ir_emitter/ir_emitter.ino)
-* Allows to set the pin of the IR led. (any A or D pin should work on the Spark Core)
+* Integrated the Spark Core's PWM. The PWM is set to 50% during mark and 0% during space. 
+* The carrier frequency is in KHz, but due to the way the PWM works can be up tp 500 Hz off at IR frequencies
+* Allows to set the pin of the IR led - no checking is done to ensure that PWM is permitted on that pin.
 * Allows to make multiple instance of the IRsend class with different pins to control multiple IR leds.
 * Updated to place IR codes in flash instead of RAM arrays
 
